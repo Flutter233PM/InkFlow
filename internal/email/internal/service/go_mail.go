@@ -29,13 +29,28 @@ func NewMailService(host string, port int, username, password, fromName string) 
 		from:     fromName, // 发件人(自定义昵称)
 	}
 
-	c, err := mail.NewClient(svc.host,
-		mail.WithPort(svc.port),
-		mail.WithSSLPort(true),
-		mail.WithSMTPAuth(svc.authType),
-		mail.WithUsername(svc.username),
-		mail.WithPassword(svc.password),
+	// SMTP implicit SSL (SMTPS) commonly uses port 465.
+	// STARTTLS typically uses port 587 (plain connection, then STARTTLS upgrade).
+	var (
+		c   *mail.Client
+		err error
 	)
+	if svc.port == 465 {
+		c, err = mail.NewClient(svc.host,
+			mail.WithPort(svc.port),
+			mail.WithSSL(),
+			mail.WithSMTPAuth(svc.authType),
+			mail.WithUsername(svc.username),
+			mail.WithPassword(svc.password),
+		)
+	} else {
+		c, err = mail.NewClient(svc.host,
+			mail.WithPort(svc.port),
+			mail.WithSMTPAuth(svc.authType),
+			mail.WithUsername(svc.username),
+			mail.WithPassword(svc.password),
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -70,5 +85,9 @@ func (svc *MailService) SendHTML(ctx context.Context, email, title, body string)
 }
 
 func (svc *MailService) Ping(ctx context.Context) error {
-	return svc.send(ctx, svc.username, "hello", "server is starting", mail.TypeTextPlain)
+	if err := svc.client.DialWithContext(ctx); err != nil {
+		return err
+	}
+	defer svc.client.Close()
+	return nil
 }

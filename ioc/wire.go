@@ -31,7 +31,8 @@ var thirdPartSet = wire.NewSet(
 	InitSyncProducer,
 	InitRedisUniversalClient,
 	InitRedisCmdable,
-	InitGeminiClient,
+	InitLLMConfig,
+	ai.InitLLMService,
 	InitTemporalClient,
 	InitGorseCli,
 )
@@ -71,7 +72,6 @@ func InitApp() *App {
 
 		comment.InitCommentService,
 
-		ai.InitLLMService,
 		review.InitService,
 		review.InitAsyncService,
 		review.InitReviewConsumer,

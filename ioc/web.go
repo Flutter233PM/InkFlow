@@ -21,6 +21,7 @@ func InitJwtHandler(cmd redis.Cmdable) jwt.Handler {
 
 func InitGin(handlers []ginx.Handler, l logx.Logger) *gin.Engine {
 	r := gin.New()
+	r.Use(gin.Recovery())
 	r.Use(middleware.NewLoggerBuilder(func(ctx context.Context, al *middleware.AccessLog) {
 		l.WithCtx(ctx).Debug("gin access log", logx.Any("content", al))
 	}).AllowRespBody().AllowReqBody().Build())

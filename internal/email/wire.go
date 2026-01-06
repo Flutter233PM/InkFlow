@@ -31,6 +31,8 @@ func InitService(l logx.Logger) Service {
 	defer cancel()
 	if err = svc.Ping(ctx); err != nil {
 		l.Error("ping email service error", logx.Error(err))
+	} else {
+		l.Info("ping email service success")
 	}
 	return service.NewAsyncService(svc, l)
 }

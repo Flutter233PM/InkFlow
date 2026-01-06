@@ -57,8 +57,8 @@ func InitApp() *App {
 	v := bff.InitBff(userService, serviceService, inkService, rankingService, followService, interactiveService, commentService, notificationService, recommendService, feedService, searchService, clientClient, handler, authentication, logger)
 	engine := InitGin(v, logger)
 	inkViewConsumer := interactive.InitInteractiveInkReadConsumer(client, logger)
-	v2 := InitGeminiClient()
-	llmService := ai.InitLLMService(v2)
+	llmConfig := InitLLMConfig()
+	llmService := ai.InitLLMService(llmConfig)
 	service2 := review.InitService(llmService)
 	failoverService := review.InitFailoverService(clientClient, service2, db, logger)
 	reviewConsumer := review.InitReviewConsumer(clientClient, client, service2, failoverService, logger)
@@ -67,7 +67,7 @@ func InitApp() *App {
 	notificationConsumer := notification.InitNotificationConsumer(client, notificationService, inkService, commentService, logger)
 	recommendSyncService := recommend.InitSyncService(gorsexClient)
 	eventSyncConsumer := recommend.InitSyncConsumer(client, recommendSyncService, logger)
-	v3 := InitConsumers(inkViewConsumer, reviewConsumer, syncConsumer, notificationConsumer, eventSyncConsumer)
+	v2 := InitConsumers(inkViewConsumer, reviewConsumer, syncConsumer, notificationConsumer, eventSyncConsumer)
 	asyncService := review.InitAsyncService(syncProducer, logger)
 	activities := inkpub.NewActivities(inkService, interactiveService, asyncService, syncService, recommendSyncService, notificationService, feedService)
 	inkPubWorker := InitInkPubWorker(clientClient, activities)
@@ -76,16 +76,16 @@ func InitApp() *App {
 	rankInkWorker := InitRankInkWorker(clientClient, rankActivities)
 	reviewFailoverActivity := schedule.NewReviewFailoverActivity(failoverService)
 	retryReviewWorker := InitRetryReviewWorker(clientClient, reviewFailoverActivity)
-	v4 := InitWorkers(inkPubWorker, rankTagWorker, rankInkWorker, retryReviewWorker)
+	v3 := InitWorkers(inkPubWorker, rankTagWorker, rankInkWorker, retryReviewWorker)
 	rankInkScheduler := InitRankInkScheduler(clientClient)
 	rankTagScheduler := InitRankTagScheduler(clientClient)
 	reviewFailRetryScheduler := InitReviewRetryScheduler(clientClient)
-	v5 := InitSchedulers(rankInkScheduler, rankTagScheduler, reviewFailRetryScheduler)
+	v4 := InitSchedulers(rankInkScheduler, rankTagScheduler, reviewFailRetryScheduler)
 	app := &App{
 		Server:     engine,
-		Consumers:  v3,
-		Workers:    v4,
-		Schedulers: v5,
+		Consumers:  v2,
+		Workers:    v3,
+		Schedulers: v4,
 	}
 	return app
 }
@@ -100,7 +100,8 @@ var thirdPartSet = wire.NewSet(
 	InitSyncProducer,
 	InitRedisUniversalClient,
 	InitRedisCmdable,
-	InitGeminiClient,
+	InitLLMConfig,
+	ai.InitLLMService,
 	InitTemporalClient,
 	InitGorseCli,
 )

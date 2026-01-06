@@ -14,7 +14,7 @@
             <template #reference>
               <div class="relative flex items-center">
                 <span class="material-symbols-outlined cursor-pointer"> notifications </span>
-                <span v-show="true" class="absolute flex -right-1 -top-1 size-3">
+                <span v-show="hasUnread" class="absolute flex -right-1 -top-1 size-3">
                   <span
                     class="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"
                   ></span>
@@ -47,15 +47,29 @@
   </div>
 </template>
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useShowLoginStore, useUserStore } from '@/stores/user.ts'
+import { useUnreadNotificationStore } from '@/stores/notification.ts'
+import { NotificationType } from '@/types/notification.ts'
 import LoginView from '@/views/login/LoginView.vue'
 import InkPopover from '@/components/popover/InkPopover.vue'
 import NotificationPop from '@/views/header/NotificationPop.vue'
 import { useRouter } from 'vue-router'
 import InkLogo from '@/components/icons/InkLogo.vue'
 import UserPanel from '@/views/header/UserPanel.vue'
+
 const router = useRouter()
 const userStore = useUserStore()
+const unreadStore = useUnreadNotificationStore()
+
+const hasUnread = computed(() => {
+  return (
+    unreadStore.unreadMap[NotificationType.Reply] > 0 ||
+    unreadStore.unreadMap[NotificationType.Follow] > 0 ||
+    unreadStore.unreadMap[NotificationType.Like] > 0 ||
+    unreadStore.unreadMap[NotificationType.System] > 0
+  )
+})
 
 const loginStore = useShowLoginStore()
 const handleLogin = () => {
