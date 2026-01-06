@@ -17,13 +17,14 @@ const reviewPrompt = `
 你的任务是判断是否通过审核，如果不通过,给出简洁明了的理由(reason)。
 如果通过,你还需要给内容打一个0-100的分数(reviewScore)，表示内容的充实度, 
 并且为文章内容打上标签(reviewTags),要求从大分类到小分类尽量全面, 10个左右, 例如：科技->AI->ChatGPT。
-请按照json格式输入,如下：
-{  
-	"passed": true | false,  
-	"reason": "如不通过，请说明原因；如通过，为空",
-	"reviewScore": 0-100,
-	"reviewTags": ["tag1", "tag2"...]
-输出必须是合法 JSON，不要添加额外解释，不要有多余文本。
+请按照 JSON 格式输出，例如：
+{
+	"passed": true,
+	"reason": "",
+	"reviewScore": 80,
+	"reviewTags": ["科技->AI->ChatGPT", "互联网->产品", "生活->随笔"]
+}
+输出必须是合法 JSON，不要添加额外解释，不要使用 Markdown 代码块，不要有多余文本。
 
 内容：{{.content}}
 `
@@ -63,7 +64,8 @@ func (s *Service) ReviewInk(ctx context.Context, ink domain.Ink) (domain.ReviewR
 	}
 
 	var result domain.ReviewResult
-	err = json.Unmarshal([]byte(s.trimMarkdown(resp.Content)), &result)
+	jsonContent := s.extractJSONObject(s.trimMarkdown(resp.Content))
+	err = json.Unmarshal([]byte(jsonContent), &result)
 	if err != nil {
 		return domain.ReviewResult{}, err
 	}
@@ -74,9 +76,35 @@ func (s *Service) ReviewInk(ctx context.Context, ink domain.Ink) (domain.ReviewR
 }
 
 func (s *Service) trimMarkdown(content string) string {
-	lines := strings.Split(content, "\n")
-	if len(lines) > 3 {
-		lines = lines[1 : len(lines)-1]
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return content
 	}
-	return strings.Join(lines, "\n")
+
+	lines := strings.Split(content, "\n")
+	if len(lines) < 2 {
+		return content
+	}
+
+	first := strings.TrimSpace(lines[0])
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if strings.HasPrefix(first, "```") && strings.HasPrefix(last, "```") {
+		lines = lines[1 : len(lines)-1]
+		return strings.TrimSpace(strings.Join(lines, "\n"))
+	}
+	return content
+}
+
+func (s *Service) extractJSONObject(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return content
+	}
+
+	start := strings.Index(content, "{")
+	end := strings.LastIndex(content, "}")
+	if start == -1 || end == -1 || end <= start {
+		return content
+	}
+	return strings.TrimSpace(content[start : end+1])
 }

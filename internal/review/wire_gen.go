@@ -34,10 +34,11 @@ func InitReviewConsumer(workflowCli client.Client, saramaCli sarama.Client, serv
 	return reviewConsumer
 }
 
+
 func InitFailoverService(workflowCli client.Client, svc service.Service, db *gorm.DB, l logx.Logger) service.FailoverService {
 	reviewFailDAO := initFailoverDao(db)
 	reviewFailRepo := repo.NewReviewFailRepo(reviewFailDAO)
-	failoverService := failover.NewReviewService(reviewFailRepo, svc, l)
+	failoverService := failover.NewReviewService(workflowCli, reviewFailRepo, svc, l)
 	return failoverService
 }
 

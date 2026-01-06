@@ -3,7 +3,6 @@ package event
 import (
 	"context"
 	"encoding/json"
-
 	"github.com/IBM/sarama"
 	"github.com/KNICEX/InkFlow/internal/review/internal/consts"
 	"github.com/KNICEX/InkFlow/internal/review/internal/domain"
@@ -59,8 +58,8 @@ func NewReviewConsumer(workflowCli client.Client, svc service.Service, retrySvc 
 	return &ReviewConsumer{
 		workflowCli: workflowCli,
 		svc:         svc,
-		saramaCli:   saramaCli,
 		retrySvc:    retrySvc,
+		saramaCli:   saramaCli,
 		l:           l,
 	}
 }

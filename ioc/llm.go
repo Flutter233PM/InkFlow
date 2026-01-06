@@ -1,33 +1,44 @@
 package ioc
 
 import (
-	"context"
-	"github.com/google/generative-ai-go/genai"
+	"github.com/KNICEX/InkFlow/internal/ai"
 	"github.com/spf13/viper"
-	"google.golang.org/api/option"
-	"time"
+	"strings"
 )
 
-func InitGeminiClient() []*genai.Client {
-	type Config struct {
-		Key []string `mapstructure:"key"`
-	}
-	var cfg Config
-	if err := viper.UnmarshalKey("llm.gemini", &cfg); err != nil {
+func InitLLMConfig() ai.LLMConfig {
+	var cfg ai.LLMConfig
+	if err := viper.UnmarshalKey("llm", &cfg); err != nil {
 		panic(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
+	cfg.Provider = strings.ToLower(strings.TrimSpace(cfg.Provider))
+	cfg.Gemini.Key = trimEmpty(cfg.Gemini.Key)
+	cfg.OpenAI.Key = trimEmpty(cfg.OpenAI.Key)
+	cfg.Claude.Key = trimEmpty(cfg.Claude.Key)
 
-	clis := make([]*genai.Client, 0, len(cfg.Key))
-	for _, k := range cfg.Key {
-		cli, err := genai.NewClient(ctx, option.WithAPIKey(k))
-		if err != nil {
-			panic(err)
+	if cfg.Provider == "" {
+		switch {
+		case len(cfg.Gemini.Key) > 0:
+			cfg.Provider = ai.LLMProviderGemini
+		case len(cfg.OpenAI.Key) > 0:
+			cfg.Provider = ai.LLMProviderOpenAI
+		case len(cfg.Claude.Key) > 0:
+			cfg.Provider = ai.LLMProviderClaude
 		}
-		clis = append(clis, cli)
 	}
 
-	return clis
+	return cfg
+}
+
+func trimEmpty(keys []string) []string {
+	res := make([]string, 0, len(keys))
+	for _, k := range keys {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		res = append(res, k)
+	}
+	return res
 }

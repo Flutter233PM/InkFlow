@@ -1,20 +1,28 @@
+//go:build integration
+
 package llm
 
 import (
 	"context"
 	"github.com/KNICEX/InkFlow/internal/ai"
 	"github.com/KNICEX/InkFlow/internal/review/internal/domain"
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/option"
+	"os"
 	"testing"
 )
 
 func TestService_ReviewInk(t *testing.T) {
-	cli, err := genai.NewClient(context.Background(), option.WithAPIKey("AIzaSyDsK-uD5Y-mW17slUROmaA4kFpohM4V96Y"))
-	if err != nil {
-		t.Fatal(err)
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		t.Skip("GEMINI_API_KEY not set")
 	}
-	llmSvc := ai.InitLLMService(cli)
+
+	llmSvc := ai.InitLLMService(ai.LLMConfig{
+		Provider: ai.LLMProviderGemini,
+		Gemini: ai.GeminiConfig{
+			Key:   []string{apiKey},
+			Model: "gemini-2.0-flash",
+		},
+	})
 
 	svc := NewLLMService(llmSvc)
 

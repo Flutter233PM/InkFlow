@@ -3,11 +3,10 @@ package llm
 import (
 	"context"
 	"errors"
-	"strings"
-
 	"github.com/KNICEX/InkFlow/internal/ai/internal/domain"
 	"github.com/KNICEX/InkFlow/internal/ai/internal/service"
 	"github.com/google/generative-ai-go/genai"
+	"strings"
 )
 
 type Service struct {
@@ -41,7 +40,7 @@ type Option func(*Service)
 func NewGeminiService(client *genai.Client, opts ...Option) service.LLMService {
 	svc := &Service{
 		client: client,
-		model:  client.GenerativeModel("gemini-2.5-flash-lite"),
+		model:  client.GenerativeModel("gemini-2.0-flash"),
 	}
 
 	for _, opt := range opts {
@@ -69,6 +68,15 @@ func WithTemperature(temp float32) Option {
 func WithFlash2() Option {
 	return func(s *Service) {
 		s.model = s.client.GenerativeModel("gemini-2.0-flash")
+	}
+}
+
+func WithModel(model string) Option {
+	return func(s *Service) {
+		if strings.TrimSpace(model) == "" {
+			return
+		}
+		s.model = s.client.GenerativeModel(model)
 	}
 }
 

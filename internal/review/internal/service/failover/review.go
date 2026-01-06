@@ -25,12 +25,13 @@ type ReviewService struct {
 	batchSize   int
 }
 
-func NewReviewService(repo repo.ReviewFailRepo, svc service.Service, log logx.Logger) service.FailoverService {
+func NewReviewService(workflowCli client.Client, repo repo.ReviewFailRepo, svc service.Service, log logx.Logger) service.FailoverService {
 	return &ReviewService{
-		repo:      repo,
-		svc:       svc,
-		log:       log,
-		batchSize: 5,
+		workflowCli: workflowCli,
+		repo:        repo,
+		svc:         svc,
+		log:         log,
+		batchSize:   5,
 	}
 }
 
@@ -63,11 +64,18 @@ func (s *ReviewService) RetryFail(ctx context.Context) error {
 		for _, fail := range fails {
 			switch fail.Type {
 			case domain.ReviewTypeInk:
-				err = s.retryInk(ctx, fail.Event.(event.ReviewInkEvent))
-				if err != nil {
+				evt, ok := fail.Event.(event.ReviewInkEvent)
+				if !ok {
+					err = fmt.Errorf("invalid fail review event type: %T", fail.Event)
 					errCnt++
+					s.log.Error("invalid fail review event type", logx.Error(err), logx.Any("event", fail.Event))
 				} else {
-					successIds = append(successIds, fail.Id)
+					err = s.retryInk(ctx, evt)
+					if err != nil {
+						errCnt++
+					} else {
+						successIds = append(successIds, fail.Id)
+					}
 				}
 			default:
 				s.log.Error("unsupported review type", logx.String("type", string(fail.Type)))
@@ -94,6 +102,9 @@ func (s *ReviewService) RetryFail(ctx context.Context) error {
 }
 
 func (s *ReviewService) retryInk(ctx context.Context, evt event.ReviewInkEvent) error {
+	if s.workflowCli == nil {
+		return errors.New("workflow client not initialized")
+	}
 	result, err := s.svc.ReviewInk(ctx, evt.Ink)
 	if err != nil {
 		s.log.Warn("review failed again", logx.String("workflowId", evt.WorkflowId), logx.Error(err))

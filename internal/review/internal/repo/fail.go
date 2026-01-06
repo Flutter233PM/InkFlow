@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/KNICEX/InkFlow/internal/review/internal/domain"
+	"github.com/KNICEX/InkFlow/internal/review/internal/event"
 	"github.com/KNICEX/InkFlow/internal/review/internal/repo/dao"
 )
 
@@ -30,12 +33,13 @@ func NewReviewFailRepo(dao dao.ReviewFailDAO) ReviewFailRepo {
 }
 
 func (r *reviewFailRepo) Create(ctx context.Context, evt domain.FailReview, er error) error {
-	eventJson, err := json.Marshal(evt)
+	eventJson, err := json.Marshal(evt.Event)
 	if err != nil {
 		return fmt.Errorf("marshal review event failed: %w", err)
 	}
 
 	record := dao.ReviewFail{
+		Type:  string(evt.Type),
 		Event: string(eventJson),
 		Error: er.Error(),
 	}
@@ -65,22 +69,41 @@ func (r *reviewFailRepo) Delete(ctx context.Context, ids []int64) error {
 }
 
 func (r *reviewFailRepo) toDomain(entity *dao.ReviewFail) (domain.FailReview, error) {
-	var evt any
+	reviewType := domain.ReviewType(entity.Type)
+	payload := []byte(entity.Event)
 
-	switch domain.ReviewType(entity.Type) {
+	// Backward compatibility: old records stored {Type, Event, ...} into Event column and left Type empty.
+	var legacy struct {
+		Type  domain.ReviewType `json:"Type"`
+		Event json.RawMessage   `json:"Event"`
+	}
+	if err := json.Unmarshal(payload, &legacy); err == nil && len(legacy.Event) > 0 {
+		if reviewType == "" {
+			reviewType = legacy.Type
+		}
+		if strings.TrimSpace(string(legacy.Event)) != "null" {
+			payload = legacy.Event
+		}
+	}
+
+	switch reviewType {
 	case domain.ReviewTypeInk:
-		if err := json.Unmarshal([]byte(entity.Event), &evt); err != nil {
+		var evt event.ReviewInkEvent
+		if err := json.Unmarshal(payload, &evt); err != nil {
 			return domain.FailReview{}, err
 		}
+		if strings.TrimSpace(evt.WorkflowId) == "" {
+			return domain.FailReview{}, errors.New("invalid fail review event: empty workflowId")
+		}
+		return domain.FailReview{
+			Id:        entity.Id,
+			Type:      reviewType,
+			Event:     evt,
+			Error:     errors.New(entity.Error),
+			CreatedAt: entity.CreatedAt,
+			UpdatedAt: entity.UpdatedAt,
+		}, nil
 	default:
-		return domain.FailReview{}, fmt.Errorf("%w : %s", ErrUnknownReviewType, entity.Type)
+		return domain.FailReview{}, fmt.Errorf("%w : %s", ErrUnknownReviewType, reviewType)
 	}
-	return domain.FailReview{
-		Id:        entity.Id,
-		Type:      domain.ReviewType(entity.Type),
-		Event:     evt,
-		Error:     errors.New(entity.Error),
-		CreatedAt: entity.CreatedAt,
-		UpdatedAt: entity.UpdatedAt,
-	}, nil
 }
