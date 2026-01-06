@@ -52,11 +52,10 @@ func (svc *RecommendService) FindSimilarUser(ctx context.Context, userId int64, 
 	}
 	return lo.Map(scores, func(item client.Score, index int) int64 {
 		id, err := strconv.ParseInt(item.Id, 10, 64)
-		if err != nil {
-			svc.l.WithCtx(ctx).Error("gorse recommend user parse id error", logx.String("id", item.Id), logx.Error(err))
-		}
+		svc.l.WithCtx(ctx).Error("gorse recommend user parse id error", logx.String("id", item.Id), logx.Error(err))
 		return id
 	}), nil
+
 }
 
 func (svc *RecommendService) FindSimilarAuthor(ctx context.Context, authorId int64, offset, limit int) ([]int64, error) {
@@ -85,13 +84,13 @@ func (svc *RecommendService) FindRecommendInk(ctx context.Context, userId int64,
 func (svc *RecommendService) FindRecommendAuthor(ctx context.Context, userId int64, offset, limit int) ([]int64, error) {
 	similarUids, err := svc.FindSimilarUser(ctx, userId, offset, limit)
 	if err != nil {
-		// Gorse 可能还没有足够数据，记录日志但不返回错误
+		// Gorse 出错时记录日志，降级到热门用户
 		svc.l.WithCtx(ctx).Warn("FindSimilarUser failed, fallback to popular", logx.Error(err))
-		similarUids = nil
 	}
 
-	if len(similarUids) == 0 {
-		// 备用策略：推荐粉丝多的用户
+	// 当 Gorse 出错或返回空时，降级到热门用户
+	if err != nil || len(similarUids) == 0 {
+		// 随便推荐几个粉丝多的
 		popular, err := svc.followSvc.FindMostPopular(ctx, offset, 100, userId)
 		if err != nil {
 			return nil, err
