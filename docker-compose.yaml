@@ -1,198 +1,250 @@
 services:
   postgres:
     image: postgres:17
-    container_name: ink-flow-postgres
+    container_name: inkflow-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: root
     volumes:
-      - ./script/postgres/:/docker-entrypoint-initdb.d/
+      - ./script/postgres/:/docker-entrypoint-initdb.d/:ro
       - postgres_data:/var/lib/postgresql/data
+    # 仅本机可访问（如需远程管理，建议走 SSH Tunnel）
     ports:
-      - "15432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - "127.0.0.1:15432:5432"
+    networks:
+      - inkflow
 
   redis:
     image: redis/redis-stack-server:latest
-    container_name: ink-flow-redis
+    container_name: inkflow-redis
+    restart: unless-stopped
     volumes:
       - redis_data:/data
     ports:
-      - "16379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
+      - "127.0.0.1:16379:6379"
+    networks:
+      - inkflow
 
   meilisearch:
     image: getmeili/meilisearch:v1.13.3
-    container_name: ink-flow-meilisearch
-    ports:
-      - "7700:7700"
+    container_name: inkflow-meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_NO_ANALYTICS: "true"
+      # 如需开启鉴权：在服务器本地设置 MEILI_MASTER_KEY，并同时写入 config/config.yaml
+      # MEILI_MASTER_KEY: your_master_key
     volumes:
       - meilisearch_data:/meili_data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  meilisearch-ui:
-    image: riccoxie/meilisearch-ui:latest
-    container_name: ink-flow-meilisearch-ui
     ports:
-      - "24900:24900"
-
-
-
-  prometheus:
-    image: prom/prometheus:v3.2.1
-    container_name: ink-flow-prometheus
-    volumes:
-      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    ports:
-      - "9090:9090"
+      - "127.0.0.1:7700:7700"
+    networks:
+      - inkflow
 
   kafka:
     image: apache/kafka:3.9.0
-    container_name: ink-flow-kafka
-    ports:
-      - "9092:9092"
-      - "9094:9094"
+    container_name: inkflow-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -lc
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 30
     volumes:
       - kafka_data:/var/lib/kafka/data
-    environment:
-      - KAFKA_NODE_ID=0
-      - KAFKA_PROCESS_ROLES=controller,broker
-      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://:9093,EXTERNAL://0.0.0.0:9094
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
-      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
-      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
-      - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: ink-flow-kafka-ui
-    ports:
-      - "18080:8080"
-    environment:
-      DYNAMIC_CONFIG_ENABLED: true
+    networks:
+      - inkflow
 
-  jeager:
+  # One-shot container: ensure required Kafka topics exist (idempotent).
+  # This prevents consumers from quitting on first boot when topics are missing.
+  kafka-init:
+    image: apache/kafka:3.9.0
+    container_name: inkflow-kafka-init
+    restart: "no"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - inkflow
+    entrypoint:
+      - bash
+      - -lc
+    command:
+      - |
+        set -e
+        for t in \
+          user-create \
+          user-update \
+          ink-view \
+          ink-like \
+          ink-cancel-like \
+          ink-favorite \
+          comment-reply \
+          comment-like \
+          comment-cancel-like \
+          comment-delete \
+          ink-review \
+          user-follow \
+          user-cancel-follow; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic "$$t" --partitions 1 --replication-factor 1
+        done
+
+  jaeger:
     image: jaegertracing/jaeger:2.4.0
-    container_name: ink-flow-jeager
+    container_name: inkflow-jaeger
+    restart: unless-stopped
+    # UI 仅本机可访问
     ports:
-      - "16686:16686" # jaeger ui
-      - "4317:4317" # jaeger grpc
-      - "4318:4318" # jaeger http
-      - "5778:5778" # jaeger thrift
-      - "9411:9411" # jaeger udp
-
-  grafana:
-    image: grafana/grafana:11.5.2
-    container_name: ink-flow-grafana
-    volumes:
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "3000:3000"
+      - "127.0.0.1:16686:16686"
+    networks:
+      - inkflow
 
   gorse:
     image: zhenghaoz/gorse-in-one
-    container_name: ink-flow-gorse
+    container_name: inkflow-gorse
     restart: unless-stopped
-    ports:
-      - "8086:8086"   # gRPC port
-      - "8088:8088"   # HTTP port
     environment:
-      # Use Redis as cache storage backend.
       GORSE_CACHE_STORE: redis://redis:6379
-      # Use PostgreSQL as data storage backend.
       GORSE_DATA_STORE: postgres://root:root@postgres:5432/gorse?sslmode=disable
     command: >
       -c /etc/gorse/config.toml
       --log-path /var/log/gorse/master.log
       --cache-path /var/lib/gorse/master_cache.data
     volumes:
-      # Mount the configuration file.
-      - ./config/gorse/config.toml:/etc/gorse/config.toml
+      - ./config/gorse/config.toml:/etc/gorse/config.toml:ro
     depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      jeager:
-        condition: service_started
+      - redis
+      - postgres
+      - jaeger
+    networks:
+      - inkflow
 
   temporal:
     build:
       context: ./deps/temporal
       dockerfile: Dockerfile
-    container_name: ink-flow-temporal
+    container_name: inkflow-temporal
+    restart: unless-stopped
+    # Server/UI 仅本机可访问
     ports:
-      - "7233:7233" # temporal server
-      - "8233:8233" # temporal web
-    healthcheck:
-      test: ["CMD", "temporal", "operator", "cluster", "health"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
+      - "127.0.0.1:7233:7233"
+      - "127.0.0.1:8233:8233"
+    networks:
+      - inkflow
 
-  # Application Backend
   backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ink-flow-backend
-    restart: on-failure
-    ports:
-      - "8080:8080" # App Server
-      - "8081:8081" # Prometheus Metrics
+    container_name: inkflow-backend
+    restart: unless-stopped
+    environment:
+      GIN_MODE: release
     volumes:
-      - ./config:/app/config
+      - ./config/config.yaml:/app/config/config.yaml:ro
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
       redis:
-        condition: service_healthy
+        condition: service_started
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       meilisearch:
-        condition: service_healthy
+        condition: service_started
       temporal:
-        condition: service_healthy
+        condition: service_started
+      gorse:
+        condition: service_started
+      jaeger:
+        condition: service_started
+    networks:
+      - inkflow
 
-  # Application Frontend
   frontend:
     build:
       context: ./ink-flow-web
       dockerfile: Dockerfile
-    container_name: ink-flow-frontend
+    container_name: inkflow-frontend
+    restart: unless-stopped
     ports:
-      - "80:80" # Host port 80 maps to container port 80
+      - "127.0.0.1:3080:80"
     depends_on:
-      backend:
-        condition: service_started
+      - backend
+    networks:
+      - inkflow
+
+  # --- optional admin UIs (disabled by default) ---
+  kafka-ui:
+    profiles: ["admin"]
+    image: provectuslabs/kafka-ui:latest
+    container_name: inkflow-kafka-ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18080:8080"
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+    networks:
+      - inkflow
+
+  meilisearch-ui:
+    profiles: ["admin"]
+    image: riccoxie/meilisearch-ui:latest
+    container_name: inkflow-meilisearch-ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:24900:24900"
+    depends_on:
+      - meilisearch
+    networks:
+      - inkflow
+
+  prometheus:
+    profiles: ["admin"]
+    image: prom/prometheus:v3.2.1
+    container_name: inkflow-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - inkflow
+
+  grafana:
+    profiles: ["admin"]
+    image: grafana/grafana:11.5.2
+    container_name: inkflow-grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - inkflow
+
+networks:
+  inkflow:
+    driver: bridge
 
 volumes:
   postgres_data:
   redis_data:
   meilisearch_data:
-  prometheus_data:
   kafka_data:
-  grafana_data:

@@ -65,7 +65,7 @@ dashboard_user_name = ""
 dashboard_password = ""
 
 # Secret key for admin APIs (SSL required).
-admin_api_key = "inkflow"
+admin_api_key = ""
 
 [server]
 
@@ -73,7 +73,7 @@ admin_api_key = "inkflow"
 default_n = 10
 
 # Secret key for RESTful APIs (SSL required).
-api_key = "inkflow"
+api_key = ""
 
 # Clock error in the cluster. The default value is 5s.
 clock_error = "5s"
@@ -237,14 +237,13 @@ num_feedback_fallback_item_based = 10
 [tracing]
 
 # Enable tracing for REST APIs. The default value is false.
-# Disable to avoid errors if Jaeger is not properly configured
-enable_tracing = false
+enable_tracing = true
 
 # The type of tracing exporters should be one of "jaeger", "zipkin", "otlp" and "otlphttp". The default value is "jaeger".
-exporter = "otlphttp"
+exporter = "jaeger"
 
-# The endpoint of tracing collector (host:port only for otlphttp)
-collector_endpoint = "jeager:4318"
+# The endpoint of tracing collector.
+collector_endpoint = "http://jaeger:14268/api/traces"
 
 # The type of tracing sampler should be one of "always", "never" and "ratio". The default value is "always".
 sampler = "always"

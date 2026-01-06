@@ -1,32 +1,17 @@
-# Build stage
-FROM node:lts-alpine AS builder
+# InkFlow Frontend
+FROM node:22-alpine AS builder
 
 WORKDIR /app
-
-# Install pnpm
 RUN npm install -g pnpm
 
-# Copy package files
 COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
-# Install dependencies
-RUN pnpm install
-
-# Copy source code
 COPY . .
-
-# Build the application (skip type-check)
+# use build-only to skip type-check in CI/prod build
 RUN pnpm build-only
 
-# Serve stage
-FROM nginx:stable-alpine
-
-# Copy nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy build artifacts
+FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
-
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]

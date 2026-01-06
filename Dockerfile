@@ -1,36 +1,28 @@
-# Build stage
+# InkFlow Backend
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
-
-# Install dependencies needed for build (if any)
 RUN apk add --no-cache git
 
-# Copy go mod and sum files
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
 COPY . .
+# Defensive: avoid output path being treated as a directory if an `inkflow/` folder exists in build context.
+RUN rm -rf /app/inkflow && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/inkflow main.go && \
+    test -f /app/inkflow
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ink-flow main.go
-
-# Run stage
-FROM alpine:latest
-
+FROM alpine:3.21
 WORKDIR /app
-
-# Install ca-certificates for external API calls
 RUN apk --no-cache add ca-certificates tzdata
+ENV TZ=Asia/Shanghai
 
-# Copy binary from builder
-COPY --from=builder /app/ink-flow .
+RUN mkdir -p /app/config
 
-# Expose ports (Application and Prometheus)
+# Put the binary outside /app so it won't be shadowed even if /app is bind-mounted by an override compose file.
+RUN rm -rf /usr/local/bin/inkflow
+COPY --from=builder /app/inkflow /usr/local/bin/inkflow
+
 EXPOSE 8080 8081
-
-# Command to run the application
-CMD ["./ink-flow"]
+CMD ["/usr/local/bin/inkflow"]

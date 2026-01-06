@@ -2,3 +2,14 @@
 /config/config.yaml
 /config/config.dev.yaml
 /logs
+/.snow
+/temp
+ROLE.md
+log.md
+CHANGELOG.md
+CONTEXT.md
+
+# dotenv (keep example if you add one later)
+.env
+.env.*
+!.env.example

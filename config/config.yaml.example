@@ -1,0 +1,87 @@
+# InkFlow configuration example
+#
+# 1) Copy this file to `config/config.yaml`
+# 2) Fill in secrets (SMTP / LLM / Cloudinary ...)
+# 3) Start with `docker compose up -d --build`
+#
+# NOTE:
+# - `config/config.yaml` is ignored by git; it is safe to keep secrets there.
+# - The addresses below are for docker-compose deployment (services in the same docker network).
+#   If you run backend directly on the host (local dev), change hosts/ports to 127.0.0.1 and the exposed ports.
+
+postgres:
+  dsn: "host=postgres user=root password=root dbname=ink_flow port=5432"
+
+redis:
+  addr: redis:6379
+  password: ""
+
+meilisearch:
+  addr: http://meilisearch:7700
+  # 留空表示 Meilisearch 不启用鉴权（推荐：不对外暴露 7700）。
+  # 如果你要开启鉴权，需要同时给 Meilisearch 容器设置相同的 MEILI_MASTER_KEY。
+  master_key: ""
+
+email:
+  smtp:
+    username: ""
+    # QQ 邮箱这里填写“授权码”，不要填登录密码
+    password: ""
+    # 587: STARTTLS（部分云厂商可能封禁出站 587）
+    # 465: SMTPS/隐式 TLS（常用于受限网络环境）
+    port: 465
+    host: smtp.qq.com
+    from_name: InkFlow
+
+llm:
+  # gemini | openai | claude
+  provider: openai
+  openai:
+    base_url: https://api.openai.com/v1
+    key:
+      - ""
+    model: gpt-4o-mini
+  # gemini:
+  #   base_url: https://generativelanguage.googleapis.com
+  #   key:
+  #     - ""
+  #   model: gemini-2.0-flash
+  # claude:
+  #   base_url: https://api.anthropic.com
+  #   key:
+  #     - ""
+  #   model: claude-sonnet-4-20250514
+
+otel:
+  grpc:
+    endpoint: jaeger:4317
+    insecure: true
+
+kafka:
+  addrs:
+    - kafka:9092
+
+file:
+  cloudinary:
+    key: ""
+    secret: ""
+    cloud_name: ""
+
+temporal:
+  addr: temporal:7233
+  namespace: inkflow
+  domain: default
+
+gorse:
+  addr: http://gorse:8088
+  api_key: ""
+
+# ---
+# Local dev hints (backend runs on host, deps via docker-compose port mapping):
+# postgres.dsn: "host=127.0.0.1 user=root password=root dbname=ink_flow port=15432"
+# redis.addr: 127.0.0.1:16379
+# meilisearch.addr: http://127.0.0.1:7700
+# kafka.addrs: [127.0.0.1:9094]
+# otel.grpc.endpoint: 127.0.0.1:4317
+# temporal.addr: 127.0.0.1:7233
+# gorse.addr: http://127.0.0.1:8088
